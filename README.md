@@ -7,16 +7,29 @@ board, and create new issues — authenticated with your own Jira API token.
 Works with **Jira Cloud** (`*.atlassian.net`) and falls back to the v2 REST API
 for **Jira Server / Data Center**.
 
+Built with Electron; ships as a `.deb` package and a portable `.AppImage`.
+
 ## Install
 
+Download the latest build from the
+[Releases page](https://github.com/maarten-vansever/jira-linux-desktop-client/releases/latest):
+
+**Debian/Ubuntu (.deb):**
+
 ```bash
-sudo apt install ./dist/jira-desktop_1.5.0_amd64.deb
+sudo apt install ./jira-desktop_<version>_amd64.deb
 ```
 
 Then launch **Jira Desktop** from the app grid, or run `jira-desktop`.
 
-Alternatively use the portable build: `dist/Jira Desktop-1.5.0.AppImage`
-(`chmod +x` it and run — no installation needed).
+**Portable (.AppImage):**
+
+```bash
+chmod +x "Jira Desktop-<version>.AppImage"
+./"Jira Desktop-<version>.AppImage"
+```
+
+No installation needed.
 
 ## First run
 
@@ -51,3 +64,11 @@ npm start          # run the app in dev mode
 npm run icon       # regenerate build/icon.png
 npm run dist       # build .deb + .AppImage into dist/
 ```
+
+## Releases
+
+Every push to `main`/`master` runs the
+[release workflow](.github/workflows/release.yml): it builds the `.deb` and
+`.AppImage` and publishes them as a GitHub release tagged `v<version>` from
+`package.json`. If that tag already exists, the workflow skips publishing —
+so to cut a new release, bump the `version` in `package.json` and push.
