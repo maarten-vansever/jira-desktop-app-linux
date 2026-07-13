@@ -12,7 +12,7 @@
     { id: 'my-open', glyph: '◉', label: 'My open issues', jql: 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC' },
     { id: 'assigned', glyph: '☰', label: 'All my issues', jql: 'assignee = currentUser() ORDER BY updated DESC' },
     { id: 'reported', glyph: '✎', label: 'Reported by me', jql: 'reporter = currentUser() ORDER BY updated DESC' },
-    { id: 'recent', glyph: '◷', label: 'Recently updated', jql: 'ORDER BY updated DESC' },
+    { id: 'recent', glyph: '◷', label: 'Recently updated', jql: 'updated >= -14d ORDER BY updated DESC' },
   ];
 
   const LIST_FIELDS = 'summary,status,assignee,priority,issuetype,updated,labels';
@@ -551,7 +551,8 @@
       <div class="detail-inner">
         <div class="detail-crumbs">
           ${typeGlyph(f.issuetype)}
-          <span class="ikey">${esc(f.project?.name || '')} / ${esc(issue.key)}</span>
+          <span class="ikey">${esc(f.project?.name || '')}</span>
+          <button class="key-badge" id="d-copy-key" title="Click to copy ${esc(issue.key)}">${esc(issue.key)} <span class="copy-glyph">⧉</span></button>
           ${parentHtml}
           <span class="spacer"></span>
           <button class="chip-btn" id="d-refresh" title="Reload issue">⟳</button>
@@ -601,6 +602,14 @@
     hydrateImages(detail);
 
     $('#d-browse', detail).addEventListener('click', () => window.api.openExternal(browseUrl));
+    $('#d-copy-key', detail).addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(issue.key);
+        toast(`${issue.key} copied to clipboard`, 'ok', 1800);
+      } catch {
+        toast('Could not copy to clipboard', 'error');
+      }
+    });
     $('#d-refresh', detail).addEventListener('click', () => selectIssue(issue.key));
     detail.querySelectorAll('[data-open]').forEach((el) =>
       el.addEventListener('click', () => selectIssue(el.dataset.open)));

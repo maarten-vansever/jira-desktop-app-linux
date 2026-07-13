@@ -344,6 +344,17 @@ select { appearance: none; cursor: pointer; }
 .detail-crumbs { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .detail-crumbs .ikey { font-size: 12.5px; }
 .detail-crumbs .spacer { flex: 1; }
+.key-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--accent); background: var(--accent-soft);
+  border: 1px solid rgba(255, 178, 36, 0.35); border-radius: 7px;
+  padding: 4px 10px; cursor: pointer;
+}
+.key-badge:hover { background: rgba(255, 178, 36, 0.22); border-color: var(--accent); }
+.key-badge:active { transform: translateY(1px); }
+.key-badge .copy-glyph { font-size: 11px; opacity: 0.65; }
+.key-badge:hover .copy-glyph { opacity: 1; }
 .detail-title { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; margin-bottom: 18px; }
 
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
