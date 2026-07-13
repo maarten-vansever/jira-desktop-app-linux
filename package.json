@@ -1,0 +1,54 @@
+{
+  "name": "jira-desktop",
+  "productName": "Jira Desktop",
+  "version": "1.7.0",
+  "description": "A fast desktop Jira client for Linux — browse, search, create and update issues.",
+  "author": {
+    "name": "Maarten Van Sever",
+    "email": "maarten.vansever@dewaele.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/maartenvansever/jira-desktop",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node scripts/make-icon.js",
+    "dist": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.maartenvansever.jiradesktop",
+    "productName": "Jira Desktop",
+    "executableName": "jira-desktop",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "build/icon.png"
+    ],
+    "linux": {
+      "target": [
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "AppImage", "arch": ["x64"] }
+      ],
+      "icon": "build/icons",
+      "category": "Development",
+      "maintainer": "maarten.vansever@dewaele.com",
+      "synopsis": "Desktop Jira client",
+      "desktop": {
+        "Name": "Jira Desktop",
+        "Comment": "Browse, search, create and update Jira issues",
+        "Keywords": "jira;issues;tickets;agile;kanban;"
+      }
+    },
+    "deb": {
+      "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1", "libsecret-1-0"]
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

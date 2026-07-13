@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'" />
+  <title>Jira Desktop</title>
+  <link rel="stylesheet" href="fonts/fonts.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ======================= Onboarding / Settings ======================= -->
+  <section id="onboarding" class="onboarding hidden">
+    <div class="onboarding-hero">
+      <img class="hero-mark" src="jira-mark.svg" alt="" draggable="false"/>
+      <h1>Jira<br/>Desktop</h1>
+      <p class="hero-sub">Your issues, on your desktop.<br/>Fast search, boards, comments &amp; transitions.</p>
+      <div class="hero-foot">Works with Jira Cloud &amp; Data&nbsp;Center</div>
+    </div>
+    <div class="onboarding-form">
+      <h2>Connect to Jira</h2>
+      <p class="form-hint">Credentials are stored locally on this machine<span id="enc-note"></span>.</p>
+
+      <label class="field">
+        <span>Jira site URL</span>
+        <input id="set-url" type="text" placeholder="https://your-team.atlassian.net" spellcheck="false" autocomplete="off"/>
+      </label>
+      <label class="field">
+        <span>Email</span>
+        <input id="set-email" type="text" placeholder="you@company.com" spellcheck="false" autocomplete="off"/>
+      </label>
+      <label class="field">
+        <span>API token <a id="token-help" href="#">create one ↗</a></span>
+        <input id="set-token" type="password" placeholder="Paste your API token" spellcheck="false" autocomplete="off"/>
+      </label>
+
+      <div id="set-error" class="form-error hidden"></div>
+
+      <div class="form-actions">
+        <button id="set-cancel" class="btn ghost hidden">Cancel</button>
+        <button id="set-save" class="btn primary">Save &amp; connect</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================== App ================================ -->
+  <div id="app" class="app hidden">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="jira-mark.svg" alt="" draggable="false"/>
+        <div class="brand-name">Jira<span>Desktop</span></div>
+      </div>
+
+      <div id="user-chip" class="user-chip"></div>
+
+      <nav class="nav">
+        <div class="nav-title">Filters</div>
+        <div id="nav-filters"></div>
+        <div class="nav-title">Issue types</div>
+        <div id="nav-types"><div class="nav-loading">Loading…</div></div>
+        <div class="nav-title">Dashboards</div>
+        <div id="nav-dashboards"><div class="nav-loading">Loading…</div></div>
+        <div class="nav-title">Projects <button id="btn-reload-projects" class="icon-btn" title="Reload projects">⟳</button></div>
+        <div id="nav-projects" class="nav-projects"><div class="nav-loading">Loading…</div></div>
+      </nav>
+
+      <div class="sidebar-foot">
+        <button id="btn-settings" class="btn subtle wide">⚙ Settings</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="search-wrap">
+          <input id="search" type="text" placeholder='Search issues, paste a key (PROJ-123) or raw JQL…  ( / )' spellcheck="false"/>
+        </div>
+        <div class="view-toggle" role="tablist">
+          <button id="view-list" class="vt active" title="List view">☰ List</button>
+          <button id="view-board" class="vt" title="Board view">▦ Board</button>
+        </div>
+        <button id="btn-refresh" class="btn subtle" title="Refresh (r)">⟳</button>
+        <button id="btn-create" class="btn primary">+ New issue</button>
+      </header>
+
+      <div id="subbar" class="subbar hidden"></div>
+
+      <div id="content-list" class="content">
+        <section class="issue-list-pane">
+          <div id="list-header" class="list-header"></div>
+          <div id="issue-list" class="issue-list"></div>
+        </section>
+        <section id="detail" class="detail">
+          <div class="detail-empty">
+            <img class="empty-mark" src="jira-mark.svg" alt="" draggable="false"/>
+            <p>Select an issue to view it</p>
+          </div>
+        </section>
+      </div>
+
+      <div id="content-board" class="content board hidden">
+        <div id="board-toolbar" class="board-toolbar"></div>
+        <div class="board-scroll"><div id="board-cols" class="board-cols"></div></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="menu-root"></div>
+  <div id="toast-root"></div>
+
+  <script src="adf.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
