@@ -8,7 +8,7 @@
     "email": "maarten.vansever@dewaele.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/maartenvansever/jira-desktop",
+  "homepage": "https://github.com/maarten-vansever/jira-linux-desktop-client",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
