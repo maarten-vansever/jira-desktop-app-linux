@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, shell, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -69,12 +69,15 @@ async function jiraRequest({ method = 'GET', path: apiPath, query, body }) {
   const auth = Buffer.from(`${settings.email}:${settings.token}`).toString('base64');
   let res;
   try {
-    res = await net.fetch(url.toString(), {
+    // Node's fetch, not Electron's net.fetch: Chromium adds an Origin header
+    // to POSTs that Jira Cloud rejects with 403 "XSRF check failed".
+    res = await fetch(url.toString(), {
       method,
       headers: {
         Authorization: `Basic ${auth}`,
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        'X-Atlassian-Token': 'no-check',
       },
       body: body !== undefined && body !== null ? JSON.stringify(body) : undefined,
     });
@@ -114,7 +117,7 @@ async function jiraUpload({ path: apiPath, filename, mimeType, data }) {
   form.append('file', new Blob([Buffer.from(data)], { type: mimeType || 'application/octet-stream' }), String(filename || 'file'));
   let res;
   try {
-    res = await net.fetch(settings.baseUrl + apiPath, {
+    res = await fetch(settings.baseUrl + apiPath, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${auth}`,
@@ -150,7 +153,7 @@ async function jiraDownload(url) {
   const auth = Buffer.from(`${settings.email}:${settings.token}`).toString('base64');
   let res;
   try {
-    res = await net.fetch(url, { headers: { Authorization: `Basic ${auth}` } });
+    res = await fetch(url, { headers: { Authorization: `Basic ${auth}` } });
   } catch (err) {
     return { ok: false, error: `Network error: ${err.message}` };
   }
