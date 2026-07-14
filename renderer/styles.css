@@ -213,6 +213,14 @@ select { appearance: none; cursor: pointer; }
 }
 .nav-item .pkey { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-left: auto; flex: none; }
 .nav-item.active .pkey { color: var(--accent); opacity: 0.7; }
+.nav-item .star {
+  flex: none; background: none; border: none; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0 2px;
+  color: var(--faint); visibility: hidden;
+}
+.nav-item:hover .star { visibility: visible; }
+.nav-item .star.on { visibility: visible; color: var(--accent); }
+.nav-item .star:hover { color: var(--accent); }
 .nav-loading { color: var(--faint); font-size: 12.5px; padding: 8px 10px; }
 
 .sidebar-foot { padding: 10px 12px; border-top: 1px solid var(--border); }

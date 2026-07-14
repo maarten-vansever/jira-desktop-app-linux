@@ -18,6 +18,10 @@
   const LIST_FIELDS = 'summary,status,assignee,priority,issuetype,updated,labels';
   const DETAIL_FIELDS = 'summary,description,status,assignee,reporter,priority,issuetype,labels,created,updated,duedate,parent,subtasks,project,attachment';
 
+  function loadStarredBoards() {
+    try { return new Set(JSON.parse(localStorage.getItem('starredBoards') || '[]')); } catch { return new Set(); }
+  }
+
   const state = {
     settings: null,
     me: null,
@@ -33,7 +37,9 @@
     selectedKey: null,
     detail: null,
     view: 'list',
-    board: { key: null, mode: 'quick', boards: [], boardId: null, boardName: '', columns: null, issues: [], loading: false },
+    board: { key: null, mode: 'quick', boards: [], boardId: null, boardName: '', columns: null, issues: [], loading: false, pinned: false },
+    boards: [],
+    starredBoards: loadStarredBoards(),
     allLabels: null,
     issueTypes: [],
     priorities: null,
@@ -220,6 +226,7 @@
     loadProjects();
     loadIssueTypes();
     loadDashboards();
+    loadBoards();
     applyFilter(state.filterId);
   }
 
@@ -265,6 +272,61 @@
     }
   }
 
+  async function loadBoards() {
+    const el = $('#nav-boards');
+    let boards = [];
+    for (let startAt = 0, page = 0; page < 4; page++) {
+      const res = await api.get('/rest/agile/1.0/board', { startAt, maxResults: 50 });
+      if (!res.ok) {
+        if (!boards.length) { el.innerHTML = `<div class="nav-loading">${esc(res.error)}</div>`; return; }
+        break;
+      }
+      boards = boards.concat(res.data.values || []);
+      if (res.data.isLast || !(res.data.values || []).length) break;
+      startAt = boards.length;
+    }
+    state.boards = boards;
+    renderBoardNav();
+  }
+
+  function sortedBoards(boards) {
+    const starred = state.starredBoards;
+    return [...boards].sort((a, b) =>
+      (starred.has(b.id) - starred.has(a.id)) || a.name.localeCompare(b.name));
+  }
+
+  function renderBoardNav() {
+    const el = $('#nav-boards');
+    el.innerHTML = state.boards.length ? '' : '<div class="nav-loading">No boards</div>';
+    for (const bd of sortedBoards(state.boards)) {
+      const isStar = state.starredBoards.has(bd.id);
+      const item = document.createElement('div');
+      item.className = 'nav-item';
+      item.dataset.board = String(bd.id);
+      item.title = `${bd.name} (${bd.type})`;
+      item.innerHTML = `
+        <span class="glyph">▦</span>
+        <span class="label">${esc(bd.name)}</span>
+        <span class="pkey">${esc(bd.location?.projectKey || '')}</span>
+        <button class="star${isStar ? ' on' : ''}" title="${isStar ? 'Unstar board' : 'Star board'}">${isStar ? '★' : '☆'}</button>`;
+      item.querySelector('.star').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleBoardStar(bd.id);
+      });
+      item.addEventListener('click', () => openBoardFromNav(bd));
+      el.appendChild(item);
+    }
+    markActiveNav();
+  }
+
+  function toggleBoardStar(id) {
+    const s = state.starredBoards;
+    if (s.has(id)) s.delete(id); else s.add(id);
+    try { localStorage.setItem('starredBoards', JSON.stringify([...s])); } catch {}
+    renderBoardNav();
+    if (state.view === 'board') renderBoardToolbar();
+  }
+
   function renderFilterNav() {
     const el = $('#nav-filters');
     el.innerHTML = '';
@@ -305,12 +367,18 @@
 
   function markActiveNav() {
     document.querySelectorAll('.nav-item').forEach((el) => {
-      el.classList.toggle('active', el.dataset.filter === state.filterId);
+      if (el.dataset.board !== undefined) {
+        el.classList.toggle('active',
+          state.view === 'board' && state.board.pinned && String(state.board.boardId) === el.dataset.board);
+      } else {
+        el.classList.toggle('active', el.dataset.filter === state.filterId);
+      }
     });
   }
 
   function applyFilter(id) {
     state.filterId = id;
+    state.board.pinned = false; // sidebar navigation releases an explicitly opened board
     if (id.startsWith('proj:')) {
       const key = id.slice(5);
       const proj = state.projects.find((p) => p.key === key);
@@ -1068,17 +1136,34 @@
   // (columns + issues from /rest/agile/1.0); 'quick' groups the current
   // issue list by status when no project/board is available.
 
-  function setView(view) {
+  function setView(view, opts = {}) {
     state.view = view;
     $('#view-list').classList.toggle('active', view === 'list');
     $('#view-board').classList.toggle('active', view === 'board');
     $('#content-list').classList.toggle('hidden', view !== 'list');
     $('#content-board').classList.toggle('hidden', view !== 'board');
-    if (view === 'board') openBoard();
+    if (view === 'board' && !opts.skipOpen) openBoard();
+    markActiveNav();
+  }
+
+  // open a specific board from the sidebar, independent of the project filter
+  async function openBoardFromNav(bd) {
+    const b = state.board;
+    b.pinned = true;
+    b.key = null;
+    b.boards = state.boards;
+    setView('board', { skipOpen: true });
+    markActiveNav();
+    await selectBoard(bd.id);
   }
 
   async function openBoard(force) {
     const b = state.board;
+    if (b.pinned && b.boardId) {
+      if (force || !b.columns) await selectBoard(b.boardId);
+      else { renderBoardToolbar(); renderBoard(); }
+      return;
+    }
     const projKey = state.filterId.startsWith('proj:') ? state.filterId.slice(5) : null;
     if (!projKey) {
       b.mode = 'quick';
@@ -1119,6 +1204,7 @@
     b.boardName = meta ? meta.name : `Board ${boardId}`;
     b.loading = true;
     renderBoardToolbar();
+    markActiveNav();
     boardSkeleton();
 
     const cfg = await api.get(`/rest/agile/1.0/board/${boardId}/configuration`);
@@ -1165,20 +1251,31 @@
   function renderBoardToolbar() {
     const b = state.board;
     const bar = $('#board-toolbar');
-    if (b.mode === 'agile' || (b.loading && b.key)) {
+    if (b.mode === 'agile' || (b.loading && (b.key || b.pinned))) {
+      const isStar = state.starredBoards.has(b.boardId);
       bar.innerHTML = `
         <button class="chip-btn" id="bt-board">▦ ${esc(b.boardName || 'Board')} <span class="caret">▾</span></button>
+        <button class="chip-btn" id="bt-star" title="${isStar ? 'Unstar board' : 'Star board'}">${isStar ? '★' : '☆'}</button>
         <span class="meta-dim" style="margin:0">${b.loading ? 'Loading board…' : `${b.issues.length} issues · ${(b.columns || []).length || '?'} columns`}</span>
         <span class="spacer"></span>
         <button class="chip-btn" id="bt-refresh" title="Reload board">⟳ Refresh</button>`;
       $('#bt-board').addEventListener('click', (e) => {
+        // pick from every board the user can see, starred first
+        const all = state.boards.length ? state.boards : b.boards;
         showMenu(e.currentTarget, (menu) => {
-          menuItems(menu, b.boards.map((bd) => ({
-            label: bd.name,
-            sub: bd.type,
-            onClick: () => selectBoard(bd.id),
+          menuItems(menu, sortedBoards(all).map((bd) => ({
+            label: `${state.starredBoards.has(bd.id) ? '★ ' : ''}${bd.name}`,
+            sub: [bd.location?.projectKey, bd.type].filter(Boolean).join(' · '),
+            onClick: () => {
+              b.pinned = true;
+              b.boards = all;
+              selectBoard(bd.id);
+            },
           })), 'No boards');
         });
+      });
+      $('#bt-star').addEventListener('click', () => {
+        if (b.boardId != null) toggleBoardStar(b.boardId);
       });
     } else {
       bar.innerHTML = `
@@ -1457,6 +1554,7 @@
     $('#btn-refresh').addEventListener('click', () => { loadIssues(false); if (state.selectedKey) selectIssue(state.selectedKey); });
     $('#btn-create').addEventListener('click', openCreateModal);
     $('#btn-reload-projects').addEventListener('click', loadProjects);
+    $('#btn-reload-boards').addEventListener('click', loadBoards);
     $('#view-list').addEventListener('click', () => setView('list'));
     $('#view-board').addEventListener('click', () => setView('board'));
 
