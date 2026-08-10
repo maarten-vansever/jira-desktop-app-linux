@@ -162,6 +162,80 @@
     }
   }
 
+  function markMd(node) {
+    let md = node.text || '';
+    for (const mark of node.marks || []) {
+      switch (mark.type) {
+        case 'strong': md = `**${md}**`; break;
+        case 'em': md = `*${md}*`; break;
+        case 'code': md = `\`${md}\``; break;
+        case 'strike': md = `~~${md}~~`; break;
+        case 'link': md = `[${md}](${mark.attrs?.href || '#'})`; break;
+      }
+    }
+    return md;
+  }
+
+  function nodeMd(node, depth = 0) {
+    if (!node || typeof node !== 'object') return '';
+    const kids = (d = depth) => (node.content || []).map((n) => nodeMd(n, d)).join('');
+    const indent = '  '.repeat(depth);
+    switch (node.type) {
+      case 'doc': return kids();
+      case 'text': return markMd(node);
+      case 'hardBreak': return '\n';
+      case 'paragraph': return kids() + '\n\n';
+      case 'heading': return '#'.repeat(Math.min(Math.max(node.attrs?.level || 1, 1), 6)) + ' ' + kids() + '\n\n';
+      case 'bulletList':
+      case 'taskList':
+        return (node.content || []).map((li) => indent + '- ' + nodeMd(li, depth + 1)).join('') + (depth ? '' : '\n');
+      case 'orderedList':
+        return (node.content || []).map((li, i) => indent + `${i + 1}. ` + nodeMd(li, depth + 1)).join('') + (depth ? '' : '\n');
+      case 'listItem': return kids().replace(/\n+$/, '') + '\n';
+      case 'taskItem': return `[${node.attrs?.state === 'DONE' ? 'x' : ' '}] ` + kids().replace(/\n+$/, '') + '\n';
+      case 'codeBlock': {
+        const lang = node.attrs?.language || '';
+        const code = (node.content || []).map((n) => n.text || '').join('');
+        return '```' + lang + '\n' + code + '\n```\n\n';
+      }
+      case 'blockquote': return kids().trim().split('\n').map((l) => '> ' + l).join('\n') + '\n\n';
+      case 'rule': return '---\n\n';
+      case 'mention': return '@' + (node.attrs?.text?.replace(/^@/, '') || 'user');
+      case 'emoji': return node.attrs?.text || node.attrs?.shortName || '';
+      case 'date': {
+        const ts = Number(node.attrs?.timestamp);
+        return ts ? new Date(ts).toISOString().slice(0, 10) : '';
+      }
+      case 'status': return `\`${node.attrs?.text || ''}\``;
+      case 'inlineCard': return node.attrs?.url || '';
+      case 'panel': return kids();
+      case 'table': {
+        const rows = (node.content || []).map((row) =>
+          '| ' + (row.content || []).map((cell) => nodeMd(cell, depth).trim().replace(/\n+/g, ' ').replace(/\|/g, '\\|')).join(' | ') + ' |');
+        if (!rows.length) return '';
+        const cols = (node.content?.[0]?.content || []).length;
+        rows.splice(1, 0, '|' + ' --- |'.repeat(cols));
+        return rows.join('\n') + '\n\n';
+      }
+      case 'mediaSingle':
+      case 'mediaGroup': return kids() + '\n\n';
+      case 'media': return node.attrs?.alt ? `![${node.attrs.alt}](${node.attrs.alt})` : '';
+      case 'expand':
+      case 'nestedExpand': return (node.attrs?.title ? `**${node.attrs.title}**\n\n` : '') + kids();
+      default: return kids();
+    }
+  }
+
+  function toMarkdown(adf) {
+    if (adf == null) return '';
+    if (typeof adf === 'string') return adf;
+    try {
+      return nodeMd(adf).replace(/\n{3,}/g, '\n\n').trim();
+    } catch {
+      return toText(adf);
+    }
+  }
+
   function fromText(text) {
     const paragraphs = String(text || '')
       .split(/\n{2,}/)
@@ -177,5 +251,5 @@
     return { type: 'doc', version: 1, content: paragraphs };
   }
 
-  window.ADF = { toHTML, toText, fromText, esc };
+  window.ADF = { toHTML, toText, toMarkdown, fromText, esc };
 })();

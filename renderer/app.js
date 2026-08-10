@@ -643,7 +643,7 @@
           <div class="fg-item" style="grid-column:1/-1"><span class="k">Labels</span><span class="v" style="flex-wrap:wrap;row-gap:5px" id="d-labels-chips"></span></div>
         </div>
 
-        <div class="sect-title">Description <button class="chip-btn mini" id="d-edit-desc" title="Edit description">✎ Edit</button></div>
+        <div class="sect-title">Description <button class="chip-btn mini" id="d-edit-desc" title="Edit description">✎ Edit</button> <button class="chip-btn mini" id="d-copy-desc" title="Copy description as Markdown">⧉ Copy</button></div>
         <div class="adf" id="d-desc">${ADF.toHTML(f.description, { attachments }) || '<p class="adf-empty">No description</p>'}</div>
 
         ${subtasks ? `<div class="sect-title">Subtasks</div>${subtasks}` : ''}
@@ -674,6 +674,16 @@
       try {
         await navigator.clipboard.writeText(issue.key);
         toast(`${issue.key} copied to clipboard`, 'ok', 1800);
+      } catch {
+        toast('Could not copy to clipboard', 'error');
+      }
+    });
+    $('#d-copy-desc', detail).addEventListener('click', async () => {
+      const md = ADF.toMarkdown(f.description);
+      if (!md) { toast('No description to copy', 'error'); return; }
+      try {
+        await navigator.clipboard.writeText(md);
+        toast('Description copied as Markdown', 'ok', 1800);
       } catch {
         toast('Could not copy to clipboard', 'error');
       }
