@@ -1392,9 +1392,15 @@
       if (!cols.has(id)) cols.set(id, { status: st, issues: [] });
       cols.get(id).issues.push(issue);
     }
+    // Fixed workflow order; statuses not listed fall back to category order.
+    const statusOrder = ['backlog', 'to do', 'in development', 'code review', 'done'];
     const catOrder = { new: 0, indeterminate: 1, done: 2 };
+    const rank = (s) => {
+      const i = statusOrder.indexOf((s.name || '').toLowerCase());
+      return i !== -1 ? i : statusOrder.length + (catOrder[s.statusCategory?.key] ?? 1);
+    };
     const sorted = [...cols.values()].sort((a, b) =>
-      (catOrder[a.status.statusCategory?.key] ?? 1) - (catOrder[b.status.statusCategory?.key] ?? 1) ||
+      rank(a.status) - rank(b.status) ||
       a.status.name.localeCompare(b.status.name));
 
     if (!sorted.length) {

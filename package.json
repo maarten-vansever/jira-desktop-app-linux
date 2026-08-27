@@ -1,7 +1,7 @@
 {
   "name": "jira-desktop",
   "productName": "Jira Desktop",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "A fast desktop Jira client for Linux — browse, search, create and update issues.",
   "author": {
     "name": "Maarten Van Sever",
