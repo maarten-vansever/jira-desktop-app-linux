@@ -53,6 +53,7 @@ except requests to your own Jira instance.
 - Comments: read and add
 - Status transitions and assignee changes from the detail pane
 - Kanban board view: uses your project's real Jira board (columns, multi-status grouping, board switcher) with drag & drop to transition issues; falls back to a status-grouped quick board
+- Notifications inbox: 🔔 tab with an unread badge showing comments others left on your issues (assigned to you or reported by you, last 14 days), polled every 3 minutes with a toast on new replies
 - Create issue dialog (project, type, priority, labels, description)
 - Keyboard: `/` search · `j`/`k` navigate · `r` refresh · `c` create · `Esc` close
 

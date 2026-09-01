@@ -81,6 +81,7 @@
         <div class="view-toggle" role="tablist">
           <button id="view-list" class="vt active" title="List view">☰ List</button>
           <button id="view-board" class="vt" title="Board view">▦ Board</button>
+          <button id="view-notifs" class="vt" title="Replies on your issues">🔔 Inbox<span id="notif-badge" class="notif-badge hidden"></span></button>
         </div>
         <button id="btn-refresh" class="btn subtle" title="Refresh (r)">⟳</button>
         <button id="btn-create" class="btn primary">+ New issue</button>
@@ -104,6 +105,19 @@
       <div id="content-board" class="content board hidden">
         <div id="board-toolbar" class="board-toolbar"></div>
         <div class="board-scroll"><div id="board-cols" class="board-cols"></div></div>
+      </div>
+
+      <div id="content-notifs" class="content notifs hidden">
+        <section class="notif-pane">
+          <div class="notif-head">
+            <b>Notifications</b>
+            <span id="notif-sub" class="meta-dim" style="margin:0"></span>
+            <span class="spacer"></span>
+            <button id="notif-mark-read" class="chip-btn" title="Mark everything as read">✓ Mark all read</button>
+            <button id="notif-refresh" class="chip-btn" title="Check for new replies">⟳ Refresh</button>
+          </div>
+          <div id="notif-list" class="notif-list"></div>
+        </section>
       </div>
     </main>
   </div>

@@ -22,6 +22,10 @@
     try { return new Set(JSON.parse(localStorage.getItem('starredBoards') || '[]')); } catch { return new Set(); }
   }
 
+  function loadNotifRead() {
+    try { return new Set(JSON.parse(localStorage.getItem('notifRead') || '[]')); } catch { return new Set(); }
+  }
+
   const state = {
     settings: null,
     me: null,
@@ -46,6 +50,8 @@
     projectTypes: {},
     dashboards: [],
     assignee: null, // null=everyone | 'me' | 'unassigned' | {accountId?, name?, displayName}
+    notifs: { items: [], loading: false, loaded: false, error: null, knownIds: null },
+    notifRead: loadNotifRead(),
   };
 
   const api = {
@@ -228,6 +234,7 @@
     loadDashboards();
     loadBoards();
     applyFilter(state.filterId);
+    startNotifPolling();
   }
 
   async function loadIssueTypes() {
@@ -565,7 +572,7 @@
   async function selectIssue(key) {
     state.selectedKey = key;
     document.querySelectorAll('.issue-row').forEach((el) => el.classList.toggle('active', el.dataset.key === key));
-    if (state.view === 'board') setView('list');
+    if (state.view !== 'list') setView('list');
     const detail = $('#detail');
     detail.innerHTML = '<div class="detail-inner"><div class="skel" style="margin:0 0 12px;height:30px"></div><div class="skel" style="margin:0 0 12px;height:90px"></div><div class="skel" style="margin:0;height:200px"></div></div>';
 
@@ -1141,6 +1148,152 @@
     if (state.view === 'board') renderBoard();
   }
 
+  // -------------------------------------------------------- notifications --
+  // "Inbox": comments left by other people on issues you're involved in
+  // (assignee or reporter), within the last NOTIF_WINDOW_DAYS. Jira's REST API
+  // has no notification feed, so this scans recent comments on your issues.
+
+  const NOTIF_WINDOW_DAYS = 14;
+  const NOTIF_POLL_MS = 3 * 60 * 1000;
+  const NOTIF_JQL = `(assignee = currentUser() OR reporter = currentUser()) AND updated >= -${NOTIF_WINDOW_DAYS}d ORDER BY updated DESC`;
+  let notifTimer = null;
+
+  function isMe(user) {
+    if (!user || !state.me) return false;
+    if (user.accountId && state.me.accountId) return user.accountId === state.me.accountId;
+    const mine = state.me.emailAddress || state.me.name || state.me.displayName;
+    const theirs = user.emailAddress || user.name || user.displayName;
+    return Boolean(mine) && mine === theirs;
+  }
+
+  function saveNotifRead() {
+    try { localStorage.setItem('notifRead', JSON.stringify([...state.notifRead].slice(-800))); } catch {}
+  }
+
+  function notifUnreadCount() {
+    return state.notifs.items.filter((it) => !state.notifRead.has(it.id)).length;
+  }
+
+  function updateNotifBadge() {
+    const badge = $('#notif-badge');
+    const c = notifUnreadCount();
+    badge.textContent = c > 99 ? '99+' : String(c);
+    badge.classList.toggle('hidden', !c);
+  }
+
+  async function loadNotifications() {
+    const n = state.notifs;
+    if (n.loading || !state.me) return;
+    n.loading = true;
+    if (state.view === 'notifs') renderNotifs();
+
+    const page = await searchPage(NOTIF_JQL, null);
+    if (!page.ok) {
+      n.loading = false;
+      n.loaded = true;
+      n.error = page.error;
+      if (state.view === 'notifs') renderNotifs();
+      return;
+    }
+
+    const issues = page.issues.slice(0, 30);
+    const cutoff = Date.now() - NOTIF_WINDOW_DAYS * 86400 * 1000;
+    const items = [];
+    for (let i = 0; i < issues.length; i += 8) {
+      await Promise.all(issues.slice(i, i + 8).map(async (issue) => {
+        const res = await api.get(`${V()}/issue/${issue.key}/comment`, { maxResults: 30, orderBy: '-created' });
+        if (!res.ok) return;
+        for (const c of res.data.comments || []) {
+          if (new Date(c.created).getTime() < cutoff) continue;
+          if (isMe(c.author)) continue;
+          items.push({
+            id: `${issue.key}#${c.id}`,
+            issueKey: issue.key,
+            issueSummary: issue.fields?.summary || '',
+            issueType: issue.fields?.issuetype,
+            author: c.author,
+            created: c.created,
+            text: (typeof c.body === 'string' ? c.body : ADF.toText(c.body)) || '',
+          });
+        }
+      }));
+    }
+    items.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+    // toast when a background poll turns up something new
+    if (n.knownIds) {
+      const fresh = items.filter((it) => !n.knownIds.has(it.id) && !state.notifRead.has(it.id));
+      if (fresh.length === 1) toast(`💬 ${fresh[0].author?.displayName || 'Someone'} commented on ${fresh[0].issueKey}`, 'info', 6000);
+      else if (fresh.length > 1) toast(`💬 ${fresh.length} new comments on your issues`, 'info', 6000);
+    }
+    n.knownIds = new Set(items.map((it) => it.id));
+    n.items = items.slice(0, 100);
+    n.loading = false;
+    n.loaded = true;
+    n.error = null;
+    updateNotifBadge();
+    if (state.view === 'notifs') renderNotifs();
+  }
+
+  function startNotifPolling() {
+    if (notifTimer) clearInterval(notifTimer);
+    notifTimer = setInterval(loadNotifications, NOTIF_POLL_MS);
+    loadNotifications();
+  }
+
+  function markNotifRead(id) {
+    state.notifRead.add(id);
+    saveNotifRead();
+    updateNotifBadge();
+  }
+
+  function renderNotifs() {
+    const n = state.notifs;
+    const list = $('#notif-list');
+    $('#notif-sub').textContent = n.loading
+      ? 'Checking for replies…'
+      : `replies on your issues · last ${NOTIF_WINDOW_DAYS} days`;
+    if (n.loading && !n.items.length) {
+      list.innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+      return;
+    }
+    if (n.error && !n.items.length) {
+      list.innerHTML = `<div class="list-error">${esc(n.error)}</div>`;
+      return;
+    }
+    if (!n.items.length) {
+      list.innerHTML = `<div class="list-empty">No replies on your issues in the last ${NOTIF_WINDOW_DAYS} days.<br/>Comments from teammates on issues you're assigned to or reported will show up here.</div>`;
+      return;
+    }
+    list.innerHTML = '';
+    for (const it of n.items) {
+      const unread = !state.notifRead.has(it.id);
+      const row = document.createElement('div');
+      row.className = 'notif-row' + (unread ? ' unread' : '');
+      const snippet = it.text.length > 220 ? `${it.text.slice(0, 220)}…` : it.text;
+      row.innerHTML = `
+        <span class="dot" title="${unread ? 'Unread' : ''}"></span>
+        ${avatarHTML(it.author, true)}
+        <div class="notif-body">
+          <div class="notif-top">
+            <b>${esc(it.author?.displayName || 'Someone')}</b>
+            <span class="meta">commented on</span>
+            ${typeGlyph(it.issueType)}
+            <span class="ikey">${esc(it.issueKey)}</span>
+            <time title="${esc(fmtFull(it.created))}">${fmtRel(it.created)}</time>
+          </div>
+          <div class="notif-summary">${esc(it.issueSummary)}</div>
+          ${snippet ? `<div class="notif-snippet">${esc(snippet)}</div>` : ''}
+        </div>`;
+      row.addEventListener('click', () => {
+        markNotifRead(it.id);
+        setView('list');
+        selectIssue(it.issueKey);
+      });
+      list.appendChild(row);
+    }
+  }
+
   // ---------------------------------------------------------------- board --
   // Two modes: 'agile' uses the real Jira board for the selected project
   // (columns + issues from /rest/agile/1.0); 'quick' groups the current
@@ -1150,9 +1303,15 @@
     state.view = view;
     $('#view-list').classList.toggle('active', view === 'list');
     $('#view-board').classList.toggle('active', view === 'board');
+    $('#view-notifs').classList.toggle('active', view === 'notifs');
     $('#content-list').classList.toggle('hidden', view !== 'list');
     $('#content-board').classList.toggle('hidden', view !== 'board');
+    $('#content-notifs').classList.toggle('hidden', view !== 'notifs');
     if (view === 'board' && !opts.skipOpen) openBoard();
+    if (view === 'notifs') {
+      renderNotifs();
+      if (!state.notifs.loaded && !state.notifs.loading) loadNotifications();
+    }
     markActiveNav();
   }
 
@@ -1573,6 +1732,14 @@
     $('#btn-reload-boards').addEventListener('click', loadBoards);
     $('#view-list').addEventListener('click', () => setView('list'));
     $('#view-board').addEventListener('click', () => setView('board'));
+    $('#view-notifs').addEventListener('click', () => setView('notifs'));
+    $('#notif-refresh').addEventListener('click', loadNotifications);
+    $('#notif-mark-read').addEventListener('click', () => {
+      for (const it of state.notifs.items) state.notifRead.add(it.id);
+      saveNotifRead();
+      updateNotifBadge();
+      renderNotifs();
+    });
 
     const search = $('#search');
     search.addEventListener('keydown', (e) => {
