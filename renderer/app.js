@@ -1247,6 +1247,14 @@
     updateNotifBadge();
   }
 
+  function toggleNotifRead(id) {
+    if (state.notifRead.has(id)) state.notifRead.delete(id);
+    else state.notifRead.add(id);
+    saveNotifRead();
+    updateNotifBadge();
+    renderNotifs();
+  }
+
   function renderNotifs() {
     const n = state.notifs;
     const list = $('#notif-list');
@@ -1281,10 +1289,15 @@
             ${typeGlyph(it.issueType)}
             <span class="ikey">${esc(it.issueKey)}</span>
             <time title="${esc(fmtFull(it.created))}">${fmtRel(it.created)}</time>
+            <button class="notif-read-btn" title="${unread ? 'Mark as read' : 'Mark as unread'}">${unread ? '✓ Read' : '↩ Unread'}</button>
           </div>
           <div class="notif-summary">${esc(it.issueSummary)}</div>
           ${snippet ? `<div class="notif-snippet">${esc(snippet)}</div>` : ''}
         </div>`;
+      row.querySelector('.notif-read-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleNotifRead(it.id);
+      });
       row.addEventListener('click', () => {
         markNotifRead(it.id);
         setView('list');
