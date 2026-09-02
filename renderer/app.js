@@ -1020,6 +1020,7 @@
         if (res && res.ok) {
           img.src = res.dataUrl;
           img.removeAttribute('data-att-src');
+          img.title = `${img.alt || 'Image'} — click to enlarge`;
         } else {
           const ph = document.createElement('div');
           ph.className = 'media-ph';
@@ -1029,6 +1030,19 @@
       });
     });
   }
+
+  // Click on a loaded attachment image to view it full-size in a lightbox.
+  function openLightbox(img) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay lightbox';
+    overlay.innerHTML = `<img src="${img.src}" alt="${esc(img.alt || '')}"/><div class="lightbox-cap">${esc(img.alt || '')}<span class="lightbox-hint">Click or press Esc to close</span></div>`;
+    overlay.addEventListener('click', () => overlay.remove());
+    $('#modal-root').appendChild(overlay);
+  }
+  document.addEventListener('click', (e) => {
+    const img = e.target.closest?.('.adf img.adf-img');
+    if (img && img.src && !img.dataset.attSrc) { e.preventDefault(); openLightbox(img); }
+  });
 
   // ---------------------------------------------------------------- labels --
   function renderLabels() {
