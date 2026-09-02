@@ -964,6 +964,73 @@
       Array.from(e.dataTransfer?.files || []).forEach(addPendingImage);
     });
 
+    // @-mentions: typing "@name" opens a people picker; picks are remembered so
+    // the posted comment carries real Jira mention nodes (and notifies them).
+    const mentions = [];
+    const pop = document.createElement('div');
+    pop.className = 'mention-pop';
+    pop.hidden = true;
+    cwrap.appendChild(pop);
+    let mSeq = 0, mActive = 0, mItems = [], mRange = null, mTimer = null;
+    const closePop = () => { pop.hidden = true; mItems = []; mRange = null; };
+    function currentMentionQuery() {
+      const pos = ta.selectionStart;
+      const before = ta.value.slice(0, pos);
+      const m = /(^|\s)@([^@\n]{0,40})$/.exec(before);
+      if (!m) return null;
+      return { start: pos - m[2].length - 1, end: pos, q: m[2] };
+    }
+    function renderPop() {
+      pop.innerHTML = '';
+      if (!mItems.length) { pop.innerHTML = '<div class="menu-note">No matches</div>'; return; }
+      mItems.forEach((u, i) => {
+        const el = document.createElement('div');
+        el.className = 'menu-item' + (i === mActive ? ' active' : '');
+        el.innerHTML = `${avatarHTML(u)}<span>${esc(u.displayName || u.name)}</span>${u.emailAddress ? `<span class="sub">${esc(u.emailAddress)}</span>` : ''}`;
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); pickMention(u); });
+        pop.appendChild(el);
+      });
+    }
+    function pickMention(u) {
+      if (!mRange) return;
+      const label = `@${u.displayName || u.name}`;
+      const id = state.apiVersion === '3' ? u.accountId : u.name;
+      if (!mentions.some((m) => m.text === label)) mentions.push({ text: label, id, name: u.name, accountId: u.accountId });
+      ta.setRangeText(label + ' ', mRange.start, mRange.end, 'end');
+      closePop();
+      ta.focus();
+    }
+    async function searchMentions(q) {
+      const my = ++mSeq;
+      const query = state.apiVersion === '3' ? { query: q, maxResults: 8 } : { username: q || '.', maxResults: 8 };
+      const res = await api.get(`${V()}/user/search`, query);
+      if (my !== mSeq || !mRange) return;
+      mItems = (res.ok && Array.isArray(res.data) ? res.data : []).filter((u) => u.accountType !== 'app' && u.active !== false).slice(0, 8);
+      mActive = 0;
+      pop.hidden = false;
+      renderPop();
+    }
+    ta.addEventListener('input', () => {
+      const cur = currentMentionQuery();
+      if (!cur) { closePop(); return; }
+      mRange = cur;
+      clearTimeout(mTimer);
+      mTimer = setTimeout(() => searchMentions(cur.q), 180);
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (pop.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); mActive = Math.min(mActive + 1, mItems.length - 1); renderPop(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); mActive = Math.max(mActive - 1, 0); renderPop(); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && mItems[mActive]) { e.preventDefault(); pickMention(mItems[mActive]); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePop(); }
+    });
+    ta.addEventListener('blur', () => setTimeout(closePop, 120));
+    // Wiki-markup form of the mentions, for the v2 endpoint.
+    const toWiki = (text) => mentions
+      .filter((m) => text.includes(m.text))
+      .sort((a, b) => b.text.length - a.text.length)
+      .reduce((t, m) => t.split(m.text).join(state.apiVersion === '3' ? `[~accountid:${m.accountId}]` : `[~${m.name}]`), text);
+
     $('#btn-comment', detail).addEventListener('click', async () => {
       const text = ta.value.trim();
       if (!text && !pending.length) return;
@@ -989,10 +1056,10 @@
         if (uploadedNames.length) {
           // Post via the v2 endpoint with wiki markup: `!file!` embeds the uploaded
           // attachment inline, which ADF can't do without internal media IDs.
-          const wiki = [text, ...uploadedNames.map((n) => `!${n}!`)].filter(Boolean).join('\n\n');
+          const wiki = [toWiki(text), ...uploadedNames.map((n) => `!${n}!`)].filter(Boolean).join('\n\n');
           res = await api.post(`/rest/api/2/issue/${issue.key}/comment`, { body: wiki });
         } else {
-          const body = state.apiVersion === '3' ? { body: ADF.fromText(text) } : { body: text };
+          const body = state.apiVersion === '3' ? { body: ADF.fromText(text, { mentions }) } : { body: toWiki(text) };
           res = await api.post(`${V()}/issue/${issue.key}/comment`, body);
         }
         if (!res.ok) { toast(res.error, 'error'); return; }

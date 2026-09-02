@@ -236,7 +236,30 @@
     }
   }
 
-  function fromText(text) {
+  // Split a line of plain text into text + mention nodes. `mentions` is a list of
+  // { text: '@Display Name', id } for people picked from the @-autocomplete.
+  function inlineNodes(line, mentions) {
+    if (!line) return [];
+    const list = (mentions || []).filter((m) => m.text && m.id).sort((a, b) => b.text.length - a.text.length);
+    if (!list.length) return [{ type: 'text', text: line }];
+    const out = [];
+    let rest = line;
+    while (rest) {
+      let best = null;
+      for (const m of list) {
+        const idx = rest.indexOf(m.text);
+        if (idx !== -1 && (!best || idx < best.idx)) best = { idx, m };
+      }
+      if (!best) { out.push({ type: 'text', text: rest }); break; }
+      if (best.idx > 0) out.push({ type: 'text', text: rest.slice(0, best.idx) });
+      out.push({ type: 'mention', attrs: { id: best.m.id, text: best.m.text } });
+      rest = rest.slice(best.idx + best.m.text.length);
+    }
+    return out;
+  }
+
+  function fromText(text, opts) {
+    const mentions = (opts && opts.mentions) || [];
     const paragraphs = String(text || '')
       .split(/\n{2,}/)
       .map((para) => {
@@ -244,7 +267,7 @@
         const content = [];
         lines.forEach((line, i) => {
           if (i > 0) content.push({ type: 'hardBreak' });
-          if (line) content.push({ type: 'text', text: line });
+          content.push(...inlineNodes(line, mentions));
         });
         return { type: 'paragraph', content: content.length ? content : [] };
       });

@@ -513,7 +513,15 @@ select { appearance: none; cursor: pointer; }
 .comment-head b { font-size: 13.5px; }
 .comment-head time { font-size: 11.5px; color: var(--faint); }
 .comment-new { display: flex; gap: 12px; margin-top: 14px; }
-.comment-new .cwrap { flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.comment-new .cwrap { flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: stretch; position: relative; }
+.mention-pop {
+  position: absolute; left: 0; top: 100%; margin-top: 4px; z-index: 50;
+  min-width: 260px; max-width: 380px; max-height: 300px; overflow-y: auto;
+  background: var(--bg-card); border: 1px solid var(--border-hi);
+  border-radius: 10px; box-shadow: var(--shadow); padding: 6px;
+  animation: pop 0.12s ease both;
+}
+.mention-pop .menu-item.active { background: var(--bg-hover); }
 .comment-new .cwrap.drag textarea { border-color: var(--blue); }
 .comment-actions { display: flex; align-items: center; gap: 8px; }
 .comment-actions .spacer { flex: 1; }
