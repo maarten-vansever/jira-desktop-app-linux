@@ -514,14 +514,17 @@ select { appearance: none; cursor: pointer; }
 .comment-head time { font-size: 11.5px; color: var(--faint); }
 .comment-new { display: flex; gap: 12px; margin-top: 14px; }
 .comment-new .cwrap { flex: 1; display: flex; flex-direction: column; gap: 8px; align-items: stretch; position: relative; }
-.mention-pop {
-  position: absolute; left: 0; top: 100%; margin-top: 4px; z-index: 50;
-  min-width: 260px; max-width: 380px; max-height: 300px; overflow-y: auto;
-  background: var(--bg-card); border: 1px solid var(--border-hi);
-  border-radius: 10px; box-shadow: var(--shadow); padding: 6px;
-  animation: pop 0.12s ease both;
-}
+.mention-pop { position: fixed; z-index: 400; max-height: 320px; overflow-y: auto; }
 .mention-pop .menu-item.active { background: var(--bg-hover); }
+.mention-pop .menu-item .sub { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-head .edited { font-size: 11px; color: var(--faint); font-style: italic; }
+.comment-tools { margin-left: auto; display: flex; gap: 2px; opacity: 0.55; transition: opacity 0.12s; }
+.comment:hover .comment-tools, .comment:focus-within .comment-tools { opacity: 1; }
+.comment-tools .btn.sm { padding: 2px 8px; font-size: 11.5px; }
+.comment-edit { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.comment-edit textarea { width: 100%; min-height: 90px; resize: vertical; }
+.comment-actions .hint { font-size: 11.5px; color: var(--faint); }
+.modal-overlay.confirm .modal { width: 420px; }
 .comment-new .cwrap.drag textarea { border-color: var(--blue); }
 .comment-actions { display: flex; align-items: center; gap: 8px; }
 .comment-actions .spacer { flex: 1; }

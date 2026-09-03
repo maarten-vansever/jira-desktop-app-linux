@@ -62,6 +62,7 @@
     get(path, query) { return this.call('GET', path, query); },
     post(path, body, query) { return this.call('POST', path, query, body); },
     put(path, body) { return this.call('PUT', path, undefined, body); },
+    delete(path) { return this.call('DELETE', path); },
   };
 
   const V = () => `/rest/api/${state.apiVersion}`;
@@ -171,6 +172,23 @@
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) overlay.remove(); });
     $('#modal-root').appendChild(overlay);
     return overlay;
+  }
+
+  function confirmModal(title, text, okLabel = 'OK') {
+    return new Promise((resolve) => {
+      const overlay = openModal(`
+        <div class="modal-head"><h3>${esc(title)}</h3></div>
+        <div class="modal-body"><p style="color:var(--dim);font-size:13.5px">${esc(text || '')}</p></div>
+        <div class="modal-foot"><button class="btn" id="cf-no">Cancel</button><button class="btn primary" id="cf-yes">${esc(okLabel)}</button></div>`);
+      overlay.classList.add('confirm');
+      const done = (v) => { overlay.remove(); resolve(v); };
+      overlay.querySelector('#cf-no').addEventListener('click', () => done(false));
+      overlay.querySelector('#cf-yes').addEventListener('click', () => done(true));
+      overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) resolve(false); });
+      const obs = new MutationObserver(() => { if (!overlay.isConnected) { obs.disconnect(); resolve(false); } });
+      obs.observe($('#modal-root'), { childList: true });
+      setTimeout(() => overlay.querySelector('#cf-yes').focus(), 30);
+    });
   }
 
   // ------------------------------------------------------------- settings --
@@ -614,10 +632,12 @@
 
     const attachments = f.attachment || [];
     const commentsHtml = comments.map((c) => `
-      <div class="comment">
+      <div class="comment" data-cid="${esc(c.id)}">
         ${avatarHTML(c.author, true)}
         <div class="comment-body">
-          <div class="comment-head"><b>${esc(c.author?.displayName || 'Unknown')}</b><time title="${esc(fmtFull(c.created))}">${fmtRel(c.created)}</time></div>
+          <div class="comment-head"><b>${esc(c.author?.displayName || 'Unknown')}</b><time title="${esc(fmtFull(c.created))}">${fmtRel(c.created)}</time>${c.updated && c.updated !== c.created ? '<span class="edited">edited</span>' : ''}
+            ${sameUser(c.author, state.me) ? `<span class="comment-tools"><button class="btn subtle sm c-edit" title="Edit comment">Edit</button><button class="btn subtle sm danger c-del" title="Delete comment">Delete</button></span>` : ''}
+          </div>
           <div class="adf">${ADF.toHTML(c.body, { attachments })}</div>
         </div>
       </div>`).join('');
@@ -661,7 +681,7 @@
         <div class="comment-new">
           ${avatarHTML(state.me, true)}
           <div class="cwrap">
-            <textarea id="new-comment" placeholder="Add a comment… (paste or drop images)"></textarea>
+            <textarea id="new-comment" placeholder="Add a comment… Type @ to mention someone; paste or drop images"></textarea>
             <div class="pending-atts" id="pending-atts" hidden></div>
             <div class="comment-actions">
               <button class="chip-btn" id="btn-attach" title="Attach an image">🖼 Add image</button>
@@ -906,6 +926,53 @@
       });
     });
 
+    // edit / delete your own comments
+    detail.querySelectorAll('.comment .c-del').forEach((btn) => btn.addEventListener('click', async () => {
+      const wrap = btn.closest('.comment');
+      const ok = await confirmModal('Delete this comment?', 'This cannot be undone.', 'Delete');
+      if (!ok) return;
+      btn.disabled = true;
+      const res = await api.delete(`${V()}/issue/${issue.key}/comment/${wrap.dataset.cid}`);
+      if (!res.ok) { btn.disabled = false; toast(res.error, 'error'); return; }
+      toast('Comment deleted', 'ok');
+      selectIssue(issue.key);
+    }));
+    detail.querySelectorAll('.comment .c-edit').forEach((btn) => btn.addEventListener('click', () => {
+      const wrap = btn.closest('.comment');
+      const c = comments.find((x) => String(x.id) === wrap.dataset.cid);
+      if (!c || wrap.querySelector('.comment-edit')) return;
+      const bodyEl = wrap.querySelector('.adf');
+      const isAdf = c.body && typeof c.body === 'object';
+      const hasMedia = isAdf && JSON.stringify(c.body).includes('"type":"media"');
+      const editor = document.createElement('div');
+      editor.className = 'comment-edit';
+      editor.innerHTML = `<textarea></textarea><div class="comment-actions"><span class="hint">Type @ to mention someone</span><span class="spacer"></span><button class="btn sm ce-cancel">Cancel</button><button class="btn primary sm ce-save">Save</button></div>`;
+      const eta = editor.querySelector('textarea');
+      eta.value = isAdf ? ADF.toText(c.body) : (c.body || '');
+      const { mentions: em, toWiki: eWiki } = attachMentionPicker(eta, { seed: issueParticipants(issue, comments), mentions: isAdf ? adfMentions(c.body) : [] });
+      bodyEl.hidden = true;
+      bodyEl.after(editor);
+      wrap.querySelector('.comment-tools').hidden = true;
+      const stop = () => { editor.remove(); bodyEl.hidden = false; wrap.querySelector('.comment-tools').hidden = false; };
+      editor.querySelector('.ce-cancel').addEventListener('click', stop);
+      eta.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); stop(); } });
+      editor.querySelector('.ce-save').addEventListener('click', async () => {
+        const text = eta.value.trim();
+        if (!text) { toast('Comment cannot be empty', 'error'); return; }
+        const save = editor.querySelector('.ce-save');
+        save.disabled = true; save.textContent = 'Saving…';
+        let res;
+        if (state.apiVersion === '3' && !hasMedia) res = await api.put(`${V()}/issue/${issue.key}/comment/${c.id}`, { body: ADF.fromText(text, { mentions: em }) });
+        else res = await api.put(`/rest/api/2/issue/${issue.key}/comment/${c.id}`, { body: eWiki(text) });
+        if (!res.ok) { save.disabled = false; save.textContent = 'Save'; toast(res.error, 'error'); return; }
+        toast('Comment updated', 'ok');
+        selectIssue(issue.key);
+      });
+      eta.focus();
+      eta.setSelectionRange(eta.value.length, eta.value.length);
+      eta.style.height = `${Math.min(Math.max(eta.scrollHeight, 90), 400)}px`;
+    }));
+
     // add comment (text + optional images)
     const pending = [];
     const ta = $('#new-comment', detail);
@@ -964,72 +1031,8 @@
       Array.from(e.dataTransfer?.files || []).forEach(addPendingImage);
     });
 
-    // @-mentions: typing "@name" opens a people picker; picks are remembered so
-    // the posted comment carries real Jira mention nodes (and notifies them).
-    const mentions = [];
-    const pop = document.createElement('div');
-    pop.className = 'mention-pop';
-    pop.hidden = true;
-    cwrap.appendChild(pop);
-    let mSeq = 0, mActive = 0, mItems = [], mRange = null, mTimer = null;
-    const closePop = () => { pop.hidden = true; mItems = []; mRange = null; };
-    function currentMentionQuery() {
-      const pos = ta.selectionStart;
-      const before = ta.value.slice(0, pos);
-      const m = /(^|\s)@([^@\n]{0,40})$/.exec(before);
-      if (!m) return null;
-      return { start: pos - m[2].length - 1, end: pos, q: m[2] };
-    }
-    function renderPop() {
-      pop.innerHTML = '';
-      if (!mItems.length) { pop.innerHTML = '<div class="menu-note">No matches</div>'; return; }
-      mItems.forEach((u, i) => {
-        const el = document.createElement('div');
-        el.className = 'menu-item' + (i === mActive ? ' active' : '');
-        el.innerHTML = `${avatarHTML(u)}<span>${esc(u.displayName || u.name)}</span>${u.emailAddress ? `<span class="sub">${esc(u.emailAddress)}</span>` : ''}`;
-        el.addEventListener('mousedown', (e) => { e.preventDefault(); pickMention(u); });
-        pop.appendChild(el);
-      });
-    }
-    function pickMention(u) {
-      if (!mRange) return;
-      const label = `@${u.displayName || u.name}`;
-      const id = state.apiVersion === '3' ? u.accountId : u.name;
-      if (!mentions.some((m) => m.text === label)) mentions.push({ text: label, id, name: u.name, accountId: u.accountId });
-      ta.setRangeText(label + ' ', mRange.start, mRange.end, 'end');
-      closePop();
-      ta.focus();
-    }
-    async function searchMentions(q) {
-      const my = ++mSeq;
-      const query = state.apiVersion === '3' ? { query: q, maxResults: 8 } : { username: q || '.', maxResults: 8 };
-      const res = await api.get(`${V()}/user/search`, query);
-      if (my !== mSeq || !mRange) return;
-      mItems = (res.ok && Array.isArray(res.data) ? res.data : []).filter((u) => u.accountType !== 'app' && u.active !== false).slice(0, 8);
-      mActive = 0;
-      pop.hidden = false;
-      renderPop();
-    }
-    ta.addEventListener('input', () => {
-      const cur = currentMentionQuery();
-      if (!cur) { closePop(); return; }
-      mRange = cur;
-      clearTimeout(mTimer);
-      mTimer = setTimeout(() => searchMentions(cur.q), 180);
-    });
-    ta.addEventListener('keydown', (e) => {
-      if (pop.hidden) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); mActive = Math.min(mActive + 1, mItems.length - 1); renderPop(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); mActive = Math.max(mActive - 1, 0); renderPop(); }
-      else if ((e.key === 'Enter' || e.key === 'Tab') && mItems[mActive]) { e.preventDefault(); pickMention(mItems[mActive]); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePop(); }
-    });
-    ta.addEventListener('blur', () => setTimeout(closePop, 120));
-    // Wiki-markup form of the mentions, for the v2 endpoint.
-    const toWiki = (text) => mentions
-      .filter((m) => text.includes(m.text))
-      .sort((a, b) => b.text.length - a.text.length)
-      .reduce((t, m) => t.split(m.text).join(state.apiVersion === '3' ? `[~accountid:${m.accountId}]` : `[~${m.name}]`), text);
+    // @-mentions: typing "@name" opens a people picker (see attachMentionPicker).
+    const { mentions, toWiki } = attachMentionPicker(ta, { seed: issueParticipants(issue, comments) });
 
     $('#btn-comment', detail).addEventListener('click', async () => {
       const text = ta.value.trim();
@@ -1110,6 +1113,146 @@
     const img = e.target.closest?.('.adf img.adf-img');
     if (img && img.src && !img.dataset.attSrc) { e.preventDefault(); openLightbox(img); }
   });
+
+  // ---------------------------------------------------------------- mentions --
+  // People already involved in the issue: shown instantly when you type "@".
+  function issueParticipants(issue, comments) {
+    const f = issue.fields || {};
+    const seen = new Set();
+    const out = [];
+    for (const u of [state.me, f.assignee, f.reporter, ...(comments || []).map((c) => c.author)]) {
+      if (!u || !(u.displayName || u.name)) continue;
+      const id = u.accountId || u.name || u.key;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(u);
+    }
+    return out;
+  }
+
+  function userId(u) { return state.apiVersion === '3' ? u.accountId : u.name; }
+  function sameUser(a, b) { return !!(a && b) && (a.accountId ? a.accountId === b.accountId : (a.name || a.key) === (b.name || b.key)); }
+
+  // Pull existing mention nodes out of an ADF body so an edited comment keeps them.
+  function adfMentions(adf) {
+    const out = [];
+    (function walk(n) {
+      if (!n || typeof n !== 'object') return;
+      if (n.type === 'mention' && n.attrs?.id) out.push({ text: '@' + String(n.attrs.text || '').replace(/^@/, ''), id: n.attrs.id, accountId: n.attrs.id });
+      (n.content || []).forEach(walk);
+    })(adf);
+    return out;
+  }
+
+  // Attach an "@name" autocomplete to a textarea. Returns the list of picked
+  // mentions (for ADF) and a toWiki(text) converter (for the v2 endpoint).
+  function attachMentionPicker(ta, opts = {}) {
+    const mentions = (opts.mentions || []).slice();
+    const seed = opts.seed || [];
+    const pop = document.createElement('div');
+    pop.className = 'menu mention-pop';
+    pop.hidden = true;
+    document.body.appendChild(pop);
+    let seq = 0, active = 0, items = [], range = null, timer = null, remote = null;
+    const close = () => { pop.hidden = true; items = []; range = null; remote = null; };
+
+    function currentQuery() {
+      const pos = ta.selectionStart;
+      const before = ta.value.slice(0, pos);
+      const m = /(^|[\s(])@([^@\n]{0,40})$/.exec(before);
+      if (!m) return null;
+      return { start: pos - m[2].length - 1, end: pos, q: m[2] };
+    }
+    function position() {
+      const r = ta.getBoundingClientRect();
+      const h = Math.min(pop.scrollHeight || 300, 320);
+      pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 400))}px`;
+      pop.style.width = `${Math.min(380, Math.max(260, r.width))}px`;
+      if (r.bottom + h + 12 < window.innerHeight) { pop.style.top = `${r.bottom + 4}px`; pop.style.bottom = 'auto'; }
+      else { pop.style.bottom = `${window.innerHeight - r.top + 4}px`; pop.style.top = 'auto'; }
+    }
+    function matches(u, q) {
+      const hay = `${u.displayName || ''} ${u.name || ''} ${u.emailAddress || ''}`.toLowerCase();
+      return !q || hay.includes(q.toLowerCase());
+    }
+    function compute() {
+      const q = range ? range.q : '';
+      const seen = new Set();
+      items = [];
+      for (const u of [...seed.filter((u) => matches(u, q)), ...(remote || [])]) {
+        const id = userId(u) || u.key;
+        if (!id || seen.has(id) || u.accountType === 'app' || u.active === false) continue;
+        seen.add(id);
+        items.push(u);
+        if (items.length >= 8) break;
+      }
+      active = Math.min(active, Math.max(items.length - 1, 0));
+    }
+    function render() {
+      pop.innerHTML = '';
+      const q = range ? range.q : '';
+      const note = document.createElement('div');
+      note.className = 'menu-note';
+      note.textContent = items.length ? 'Mention someone — ↑↓ then Enter' : (remote === null ? 'Searching…' : `No one matching “${q}”`);
+      pop.appendChild(note);
+      items.forEach((u, i) => {
+        const el = document.createElement('div');
+        el.className = 'menu-item' + (i === active ? ' active' : '');
+        el.innerHTML = `${avatarHTML(u)}<span>${esc(u.displayName || u.name)}</span>${u.emailAddress ? `<span class="sub">${esc(u.emailAddress)}</span>` : ''}`;
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); pick(u); });
+        el.addEventListener('mousemove', () => { if (active !== i) { active = i; render(); } });
+        pop.appendChild(el);
+      });
+      pop.hidden = false;
+      position();
+    }
+    function pick(u) {
+      if (!range) return;
+      const label = `@${u.displayName || u.name}`;
+      if (!mentions.some((m) => m.text === label)) mentions.push({ text: label, id: userId(u), name: u.name, accountId: u.accountId });
+      ta.setRangeText(label + ' ', range.start, range.end, 'end');
+      close();
+      ta.focus();
+      ta.dispatchEvent(new Event('autosize'));
+    }
+    async function search(q) {
+      const my = ++seq;
+      const query = state.apiVersion === '3' ? { query: q, maxResults: 10 } : { username: q || '.', maxResults: 10 };
+      const res = await api.get(`${V()}/user/search`, query);
+      if (my !== seq || !range) return;
+      remote = res.ok && Array.isArray(res.data) ? res.data : [];
+      compute();
+      render();
+    }
+    ta.addEventListener('input', () => {
+      const cur = currentQuery();
+      if (!cur) { close(); return; }
+      const fresh = !range;
+      range = cur;
+      if (fresh) remote = null;
+      compute();
+      render();
+      clearTimeout(timer);
+      timer = setTimeout(() => search(cur.q), 160);
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (pop.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(active + 1, items.length - 1); render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); render(); }
+      else if ((e.key === 'Enter' || e.key === 'Tab') && items[active]) { e.preventDefault(); pick(items[active]); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    });
+    ta.addEventListener('blur', () => setTimeout(close, 150));
+    // Remove the popup when the textarea leaves the DOM (detail re-render).
+    const mo = new MutationObserver(() => { if (!ta.isConnected) { pop.remove(); mo.disconnect(); } });
+    mo.observe(document.body, { childList: true, subtree: true });
+
+    const toWiki = (text) => mentions
+      .filter((m) => text.includes(m.text))
+      .sort((a, b) => b.text.length - a.text.length)
+      .reduce((t, m) => t.split(m.text).join(state.apiVersion === '3' ? `[~accountid:${m.accountId || m.id}]` : `[~${m.name || m.id}]`), text);
+    return { mentions, toWiki };
+  }
 
   // ---------------------------------------------------------------- labels --
   function renderLabels() {
