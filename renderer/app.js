@@ -636,7 +636,9 @@
         ${avatarHTML(c.author, true)}
         <div class="comment-body">
           <div class="comment-head"><b>${esc(c.author?.displayName || 'Unknown')}</b><time title="${esc(fmtFull(c.created))}">${fmtRel(c.created)}</time>${c.updated && c.updated !== c.created ? '<span class="edited">edited</span>' : ''}
-            ${sameUser(c.author, state.me) ? `<span class="comment-tools"><button class="btn subtle sm c-edit" title="Edit comment">Edit</button><button class="btn subtle sm danger c-del" title="Delete comment">Delete</button></span>` : ''}
+            <span class="comment-tools">${sameUser(c.author, state.me)
+              ? `<button class="btn subtle sm c-edit" title="Edit comment">Edit</button><button class="btn subtle sm danger c-del" title="Delete comment">Delete</button>`
+              : `<button class="btn subtle sm c-reply" title="Reply to ${esc(c.author?.displayName || 'this comment')}">↩ Reply</button>`}</span>
           </div>
           <div class="adf">${ADF.toHTML(c.body, { attachments })}</div>
         </div>
@@ -1032,7 +1034,18 @@
     });
 
     // @-mentions: typing "@name" opens a people picker (see attachMentionPicker).
-    const { mentions, toWiki } = attachMentionPicker(ta, { seed: issueParticipants(issue, comments) });
+    const { mentions, toWiki, insert: insertMention } = attachMentionPicker(ta, { seed: issueParticipants(issue, comments) });
+
+    // Reply to someone's comment: @-mention them in the comment box and jump there.
+    detail.querySelectorAll('.comment .c-reply').forEach((btn) => btn.addEventListener('click', () => {
+      const wrap = btn.closest('.comment');
+      const c = comments.find((x) => String(x.id) === wrap.dataset.cid);
+      if (!c || !c.author) return;
+      insertMention(c.author);
+      cwrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+    }));
 
     $('#btn-comment', detail).addEventListener('click', async () => {
       const text = ta.value.trim();
@@ -1247,11 +1260,21 @@
     const mo = new MutationObserver(() => { if (!ta.isConnected) { pop.remove(); mo.disconnect(); } });
     mo.observe(document.body, { childList: true, subtree: true });
 
+    // Insert a mention of `u` without going through the "@" popup (used by Reply).
+    function insert(u) {
+      const label = `@${u.displayName || u.name}`;
+      if (!mentions.some((m) => m.text === label)) mentions.push({ text: label, id: userId(u), name: u.name, accountId: u.accountId });
+      if (ta.value.includes(label)) return;
+      const cur = ta.value;
+      const sep = !cur ? '' : /\s$/.test(cur) ? '' : ' ';
+      ta.value = cur + sep + label + ' ';
+    }
+
     const toWiki = (text) => mentions
       .filter((m) => text.includes(m.text))
       .sort((a, b) => b.text.length - a.text.length)
       .reduce((t, m) => t.split(m.text).join(state.apiVersion === '3' ? `[~accountid:${m.accountId || m.id}]` : `[~${m.name || m.id}]`), text);
-    return { mentions, toWiki };
+    return { mentions, toWiki, insert };
   }
 
   // ---------------------------------------------------------------- labels --

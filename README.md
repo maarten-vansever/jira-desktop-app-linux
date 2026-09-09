@@ -50,7 +50,7 @@ except requests to your own Jira instance.
 - Project browser
 - Search bar: free text, an issue key (`PROJ-123`), or raw JQL
 - Issue detail: rendered rich-text descriptions (ADF), fields, labels, subtasks
-- Comments: read and add
+- Comments: read, add, reply (@-mentions the author), edit/delete your own, @-mention people, paste or drop images
 - Status transitions and assignee changes from the detail pane
 - Kanban board view: uses your project's real Jira board (columns, multi-status grouping, board switcher) with drag & drop to transition issues; falls back to a status-grouped quick board
 - Notifications inbox: 🔔 tab with an unread badge showing comments others left on your issues (assigned to you or reported by you, last 14 days), polled every 3 minutes with a toast on new replies
